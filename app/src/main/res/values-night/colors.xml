@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark Mode Palette -->
+    <color name="background">#0F172A</color> <!-- Slate 950 -->
+    <color name="surface">#1E293B</color> <!-- Slate 800 -->
+    <color name="text_primary">#F8FAFC</color> <!-- Slate 50 -->
+    <color name="text_secondary">#94A3B8</color> <!-- Slate 400 -->
+
+    <!-- Adjusted Accent colors for Dark Mode -->
+    <color name="accent_blue">#1E293B</color>
+    <color name="accent_red">#450A0A</color>
+    <color name="accent_green">#064E3B</color>
+    <color name="accent_purple">#2E1065</color>
+    <color name="accent_orange">#451A03</color>
+</resources>
