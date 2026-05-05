@@ -24,7 +24,7 @@ class AppLockService : Service() {
     private val TRIGGER_COOLDOWN = 10000L // 10 seconds cooldown between stealth checks
     private var screenUnlockReceiver: BroadcastReceiver? = null
     private lateinit var riskEngine: RiskEngine
-
+    private val recentOpens = mutableListOf<Pair<String, Long>>()
 
     companion object {
         var lastUnlockedApp: String? = null
@@ -168,30 +168,68 @@ class AppLockService : Service() {
             saveCurrentTracking()
             
             val sharedPrefs = getSharedPreferences("AppLockPrefs", Context.MODE_PRIVATE)
-            val isBehaviorEnabled = sharedPrefs.getBoolean("BehaviorLock", false)
 
+            // Track recent opens (sliding window of 60 seconds)
+            val now = System.currentTimeMillis()
+            recentOpens.add(packageName to now)
+            recentOpens.removeAll { it.second < now - 60000 }
+            
             // Trigger check with COOLDOWN and DELAY
             if (!ignorePackages.contains(packageName)) {
                 val riskLevel = riskEngine.getRiskLevel(packageName)
                 val isLocked = lockedPackages.contains(packageName)
+                
+                // If the owner just unlocked this app, reset our recent open tracking for it
+                if (lastUnlockedApp == packageName) {
+                    recentOpens.removeAll { it.first == packageName }
+                    lastUnlockedApp = null // Clear it so we don't reset repeatedly
+                }
 
-                if (isLocked || riskLevel != RiskEngine.RiskLevel.LOW || (currentTime - lastTriggerTime > TRIGGER_COOLDOWN)) {
-                    Log.d("AppLockService", "Check triggered. Reason: Locked=$isLocked, Risk=$riskLevel, Time=${currentTime - lastTriggerTime > TRIGGER_COOLDOWN}")
+                val behavioralCount = recentOpens.count { it.first == packageName }
+
+                if (isLocked || riskLevel != RiskEngine.RiskLevel.LOW || (currentTime - lastTriggerTime > TRIGGER_COOLDOWN) || behavioralCount >= 3) {
+                    Log.d("AppLockService", "Check triggered for $packageName. Reason: Locked=$isLocked, Risk=$riskLevel, Count=$behavioralCount")
                     lastTriggerTime = currentTime
                     
-                    // Delay the stealth check by 2 seconds so the app opens instantly
+                    // Delay reduced for immediate capture
                     val handler = android.os.Handler(android.os.Looper.getMainLooper())
                     handler.postDelayed({
                         if (getForegroundApp() == packageName) {
-                            if (isLocked || riskLevel != RiskEngine.RiskLevel.LOW) {
-                                showLockScreen(packageName, riskLevel)
+                            val intent = Intent(this, LockActivity::class.java)
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                            
+                            val isBehavioralAlert = behavioralCount >= 3
+                            val behaviorDetails = if (isBehavioralAlert) {
+                                val names = recentOpens.filter { it.first == packageName }
+                                    .map { pkg ->
+                                        try {
+                                            val pm = packageManager
+                                            pm.getApplicationLabel(pm.getApplicationInfo(pkg.first, 0)).toString()
+                                        } catch (e: Exception) { pkg.first.split(".").last() }
+                                    }.distinct().joinToString(", ")
+                                "behavioral_alert_${behavioralCount}_times_apps_$names"
+                            } else null
+
+                            if (isLocked || riskLevel != RiskEngine.RiskLevel.LOW || isBehavioralAlert) {
+                                // Start in STEALTH mode for 1s then upgrade if needed
+                                intent.putExtra("MODE", "STEALTH")
+                                intent.putExtra("UPGRADE_ON_FAIL", true)
+                                intent.putExtra("TARGET_PACKAGE", packageName)
+                                intent.putExtra("RISK_LEVEL", if (isBehavioralAlert) RiskEngine.RiskLevel.HIGH.name else riskLevel.name)
+                                intent.putExtra("REASON", behaviorDetails ?: if (isLocked) "app_lock" else "behavioral_analysis")
                             } else {
-                                triggerStealthPhoto()
+                                // Periodic checks stay in STEALTH
+                                intent.putExtra("MODE", "STEALTH")
+                                intent.putExtra("REASON", "periodic_check")
                             }
+                            startActivity(intent)
                         }
-                    }, 2000)
+                    }, 300)
                 }
             }
+            
+            // Record this app change for frequency analysis in RiskEngine
+            sharedPrefs.edit().putLong("LastAppOpenTime", currentTime).apply()
             
             currentTrackingPackage = packageName
             trackingStartTime = currentTime
@@ -199,12 +237,15 @@ class AppLockService : Service() {
     }
 
     private fun triggerStealthPhoto() {
-        getSharedPreferences("AppLockPrefs", Context.MODE_PRIVATE).edit()
-            .putBoolean("IsIntruderSession", false).apply()
+        val sharedPrefs = getSharedPreferences("AppLockPrefs", Context.MODE_PRIVATE)
+        sharedPrefs.edit().putBoolean("IsIntruderSession", false).apply()
+        val lastTrigger = sharedPrefs.getLong("LastTriggerTime", 0L)
+        val reason = if (System.currentTimeMillis() - lastTrigger < 15000) "behavioral_analysis" else "periodic_check"
             
         val intent = Intent(this, LockActivity::class.java)
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         intent.putExtra("MODE", "STEALTH")
+        intent.putExtra("REASON", reason)
         startActivity(intent)
     }
 
@@ -255,19 +296,6 @@ class AppLockService : Service() {
         }
         return null
     }
-
-    private fun showLockScreen(targetPackage: String, riskLevel: RiskEngine.RiskLevel = RiskEngine.RiskLevel.LOW) {
-        getSharedPreferences("AppLockPrefs", Context.MODE_PRIVATE).edit()
-            .putBoolean("IsIntruderSession", false).apply()
-
-        val intent = Intent(this, LockActivity::class.java)
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        intent.putExtra("TARGET_PACKAGE", targetPackage)
-        intent.putExtra("RISK_LEVEL", riskLevel.name)
-        startActivity(intent)
-    }
-
-
 
     private fun createNotificationChannel() {
         val channel = NotificationChannel("app_lock_channel", "AppLock Service", NotificationManager.IMPORTANCE_LOW)

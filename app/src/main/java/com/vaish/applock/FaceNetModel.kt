@@ -68,12 +68,14 @@ class FaceNetModel(context: Context) {
         return sqrt(distance)
     }
 
-    // L2 Normalization often helps with FaceNet models
+    // L2 Normalization helps with FaceNet models by mapping vectors to a hypersphere
     private fun l2Normalize(v: FloatArray): FloatArray {
         var sum = 0f
         for (f in v) sum += f * f
         val mag = sqrt(sum)
-        for (i in v.indices) v[i] = v[i] / mag
+        if (mag > 0) {
+            for (i in v.indices) v[i] = v[i] / mag
+        }
         return v
     }
 }

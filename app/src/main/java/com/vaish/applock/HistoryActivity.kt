@@ -106,7 +106,18 @@ class HistoryActivity : AppCompatActivity() {
             val item = list[position]
             val context = holder.itemView.context
             val sdf = SimpleDateFormat("MMM dd, yyyy HH:mm:ss", Locale.getDefault())
-            holder.binding.tvTimestamp.text = sdf.format(Date(item.timestamp))
+            
+            val displayReason = if (item.reason.startsWith("behavioral_alert_")) {
+                val parts = item.reason.split("_")
+                val count = parts.getOrNull(2) ?: "many"
+                val appNames = item.reason.substringAfter("_apps_").replace("_", " ")
+                "Behavioral Alert: Opened $count times ($appNames)"
+            } else {
+                item.reason.replace("_", " ").replaceFirstChar { 
+                    if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() 
+                }
+            }
+            holder.binding.tvTimestamp.text = "${sdf.format(Date(item.timestamp))} • $displayReason"
 
             if (item.latitude != null && item.longitude != null) {
                 holder.binding.tvLocation.text = context.getString(R.string.fetching_address)
@@ -203,25 +214,40 @@ class HistoryActivity : AppCompatActivity() {
         Log.d("HistoryActivity", "Found ${files.size} intruder files")
 
         val intruderList = files.map { file ->
-            val name = file.nameWithoutExtension // intruder_TIMESTAMP_loc_LAT_LON
-            val parts = name.split("_")
+            val name = file.nameWithoutExtension 
             var timestamp = file.lastModified()
             var lat: Double? = null
             var lon: Double? = null
+            var reason = "unknown"
             
-            if (parts.size >= 2) {
-                timestamp = parts[1].toLongOrNull() ?: file.lastModified()
-            }
-            
-            if (parts.contains("loc")) {
-                val locIndex = parts.indexOf("loc")
-                if (parts.size > locIndex + 2) {
-                    lat = parts[locIndex + 1].toDoubleOrNull()
-                    lon = parts[locIndex + 2].toDoubleOrNull()
+            try {
+                val parts = name.split("_")
+                if (parts.size >= 2) {
+                    timestamp = parts[1].toLongOrNull() ?: file.lastModified()
                 }
+
+                if (name.contains("_reason_")) {
+                    val afterReason = name.substringAfter("_reason_")
+                    reason = if (afterReason.contains("_loc_")) {
+                        afterReason.substringBefore("_loc_")
+                    } else {
+                        afterReason
+                    }
+                }
+                
+                if (name.contains("_loc_")) {
+                    val locPart = name.substringAfter("_loc_")
+                    val locParts = locPart.split("_")
+                    if (locParts.size >= 2) {
+                        lat = locParts[0].toDoubleOrNull()
+                        lon = locParts[1].toDoubleOrNull()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("HistoryActivity", "Error parsing filename: $name", e)
             }
             
-            Intruder(file.absolutePath, timestamp, lat, lon)
+            Intruder(file.absolutePath, timestamp, lat, lon, reason)
         }
 
         val sharedPrefs = getSharedPreferences("AppLockPrefs", Context.MODE_PRIVATE)

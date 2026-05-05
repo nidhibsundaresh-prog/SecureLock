@@ -4,5 +4,6 @@ data class Intruder(
     val imagePath: String,
     val timestamp: Long,
     val latitude: Double? = null,
-    val longitude: Double? = null
+    val longitude: Double? = null,
+    val reason: String = "unknown"
 )

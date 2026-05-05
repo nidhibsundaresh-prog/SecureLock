@@ -22,6 +22,7 @@
     <string name="security_events_trend">Security Events Trend</string>
 
     <string name="quick_actions">Quick Actions</string>
+    <string name="lock_apps">Lock Apps</string>
     <string name="update_face">Update Face</string>
     <string name="intruder_logs">Intruder Logs</string>
     <string name="set_security_pin">Set Security PIN</string>
@@ -36,8 +37,9 @@
     <string name="protected_apps">Protected Applications</string>
     <string name="intruder_history">Intruder History</string>
 
-    <string name="auth_face">Identify Yourself</string>
+    <string name="auth_face">APPLOCKED SINCE OWNER NOT VERIFIED</string>
     <string name="auth_pin">Enter PIN</string>
+    <string name="verify">Verify</string>
     <string name="cancel">Cancel</string>
     <string name="use_pin">Use PIN</string>
     <string name="risk_high">High Risk: Strict Auth Required</string>

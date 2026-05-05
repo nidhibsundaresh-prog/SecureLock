@@ -46,9 +46,18 @@ class LockActivity : AppCompatActivity() {
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private var failSafeRunnable: Runnable? = null
     private var lastSavedIntruderFile: File? = null
+    private var captureReason: String = "unknown"
+    private var upgradeOnFail: Boolean = false
+    @Volatile private var isVerifiedInThisSession = false
+    private val sessionCaptureFiles = mutableListOf<File>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         mode = intent.getStringExtra("MODE") ?: "VERIFY"
+        captureReason = intent.getStringExtra("REASON") ?: "unknown"
+        upgradeOnFail = intent.getBooleanExtra("UPGRADE_ON_FAIL", false)
+        isVerifiedInThisSession = false
+        synchronized(sessionCaptureFiles) { sessionCaptureFiles.clear() }
+
         if (mode == "STEALTH") {
             overridePendingTransition(0, 0)
         }
@@ -128,7 +137,9 @@ class LockActivity : AppCompatActivity() {
         isProcessing = false
         intruderCapturedInSession = false
         isVerifiedInThisSession = false
+        synchronized(sessionCaptureFiles) { sessionCaptureFiles.clear() }
         lastSavedIntruderFile = null
+        upgradeOnFail = intent.getBooleanExtra("UPGRADE_ON_FAIL", false)
 
         isOwnerRegistered = File(getExternalFilesDir(null), "owner_face.dat").exists()
         
@@ -137,6 +148,44 @@ class LockActivity : AppCompatActivity() {
         
         if (allPermissionsGranted()) {
             startCamera()
+        }
+    }
+
+    private fun upgradeToVerifyMode() {
+        runOnUiThread {
+            Log.d("LockActivity", "Upgrading from Stealth to Verify mode")
+            mode = "VERIFY"
+            isProcessing = false
+            
+            // Bring window to foreground and make it visible
+            window.clearFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
+            window.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+            window.clearFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+            window.setDimAmount(0.8f) // Standard dim for lock screen
+            
+            val params = window.attributes
+            params.alpha = 1.0f
+            params.width = ViewGroup.LayoutParams.MATCH_PARENT
+            params.height = ViewGroup.LayoutParams.MATCH_PARENT
+            params.gravity = android.view.Gravity.CENTER
+            window.attributes = params
+            
+            updateUIForMode()
+        }
+    }
+
+    private fun cleanupSessionPhotos() {
+        synchronized(sessionCaptureFiles) {
+            val iterator = sessionCaptureFiles.iterator()
+            while (iterator.hasNext()) {
+                val file = iterator.next()
+                if (file.exists()) {
+                    if (file.delete()) {
+                        Log.d("LockActivity", "Deleted session photo: ${file.name}")
+                        iterator.remove()
+                    }
+                }
+            }
         }
     }
 
@@ -174,9 +223,16 @@ class LockActivity : AppCompatActivity() {
                     binding.btnUsePin.visibility = View.VISIBLE
                 }
                 else -> { // VERIFY
-                    binding.tvMessage.text = getString(R.string.auth_face)
+                    if (riskLevel == "HIGH") {
+                        binding.tilPin.visibility = View.VISIBLE
+                        binding.tvMessage.text = getString(R.string.risk_high)
+                        binding.btnUsePin.text = getString(R.string.verify)
+                        binding.cameraCard.alpha = 0.3f
+                    } else {
+                        binding.tvMessage.text = getString(R.string.auth_face)
+                        binding.btnUsePin.text = getString(R.string.use_pin)
+                    }
                     binding.btnUnlock.text = getString(R.string.cancel)
-                    binding.btnUsePin.text = getString(R.string.use_pin)
                     binding.btnUsePin.visibility = View.VISIBLE
                 }
             }
@@ -229,7 +285,7 @@ class LockActivity : AppCompatActivity() {
         } else {
             binding.tilPin.error = "Incorrect PIN"
             riskEngine.recordFailedAttempt() // Increment risk on failure
-            captureIntruderPhoto() 
+            captureIntruderPhoto(lastDetectedBitmap, lastDetectedRotation, "wrong_pin")
         }
     }
 
@@ -296,23 +352,27 @@ class LockActivity : AppCompatActivity() {
                     // Start stealth monitoring
                     cameraProvider.bindToLifecycle(this, cameraSelector, imageCapture, imageAnalyzer)
                     
-                    // FAIL-SAFE: If no owner verified within 3 seconds, capture whatever is there
+                    // FAIL-SAFE: If no owner verified within 2.5 seconds, capture and possibly upgrade
                     failSafeRunnable = Runnable {
                         if (!isProcessing && !isFinishing) {
                             Log.d("LockActivity", "Stealth timeout: Capturing evidence anyway.")
                             
                             // Capture the last frame we had
-                            captureIntruderPhoto(lastDetectedBitmap, 0)
+                            captureIntruderPhoto(lastDetectedBitmap, 0, captureReason)
                             
-                            handler.postDelayed({
-                                if (!isFinishing) {
-                                    finish()
-                                    overridePendingTransition(0, 0)
-                                }
-                            }, 1000)
+                            if (upgradeOnFail) {
+                                upgradeToVerifyMode()
+                            } else {
+                                handler.postDelayed({
+                                    if (!isFinishing) {
+                                        finish()
+                                        overridePendingTransition(0, 0)
+                                    }
+                                }, 1000)
+                            }
                         }
                     }
-                    handler.postDelayed(failSafeRunnable!!, 3000)
+                    handler.postDelayed(failSafeRunnable!!, 2500)
                 } else {
                     cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageCapture, imageAnalyzer)
                 }
@@ -328,7 +388,6 @@ class LockActivity : AppCompatActivity() {
     private var lastDetectedBitmap: Bitmap? = null
     private var lastDetectedRotation: Int = 0
     private var intruderCapturedInSession = false
-    private var isVerifiedInThisSession = false
 
     private fun onFaceDetected(face: Face?, bitmap: Bitmap?, rotation: Int) {
         if (bitmap != null) {
@@ -354,13 +413,11 @@ class LockActivity : AppCompatActivity() {
                     isVerifiedInThisSession = true
                     sharedPrefs.edit().putBoolean("IsIntruderSession", false).apply()
                     
-                    // Match found! Delete any preliminary intruder photo from this session
-                    lastSavedIntruderFile?.let {
-                        if (it.exists()) {
-                            it.delete()
-                            Log.d("LockActivity", "Match found! Deleted preliminary intruder photo.")
-                        }
-                    }
+                    // Match found! Delete all files captured in this session
+                    cleanupSessionPhotos()
+                    
+                    // Secondary cleanup after a short delay to catch files still being written
+                    handler.postDelayed({ cleanupSessionPhotos() }, 2000)
                     
                     isProcessing = true
                     failSafeRunnable?.let { handler.removeCallbacks(it) }
@@ -388,18 +445,22 @@ class LockActivity : AppCompatActivity() {
                     if (!intruderCapturedInSession) {
                         Log.d("LockActivity", "Capturing intruder photo.")
                         sharedPrefs.edit().putBoolean("IsIntruderSession", true).apply()
-                        captureIntruderPhoto(bitmap, rotation)
+                        captureIntruderPhoto(bitmap, rotation, if (captureReason != "unknown") captureReason else "face_mismatch")
                         intruderCapturedInSession = true
                         
-                        // In VERIFY mode, we stop after one attempt or show error
-                        if (mode != "STEALTH") {
-                            isProcessing = true
-                            handler.postDelayed({ isProcessing = false }, 2000)
+                        // In STEALTH mode with upgradeOnFail, we DON'T upgrade immediately.
+                        // We give it more time for subsequent frames to potentially match.
+                        if (mode != "STEALTH" && upgradeOnFail) {
+                            upgradeToVerifyMode()
+                            return
                         }
                     }
                     
-                    // In stealth mode, we don't set isProcessing = true yet, 
-                    // giving the owner more chances to be recognized in subsequent frames.
+                    // In VERIFY mode, we stop after one attempt or show error
+                    if (mode != "STEALTH") {
+                        isProcessing = true
+                        handler.postDelayed({ isProcessing = false }, 2000)
+                    }
                 }
             } else if (mode == "STEALTH") {
                 // In stealth mode, if we haven't seen a face yet but have frames,
@@ -436,11 +497,11 @@ class LockActivity : AppCompatActivity() {
         val distance = faceNetModel.compare(currentEmbedding, savedEmbedding)
         Log.d("LockActivity", "Face distance: $distance (Risk: $riskLevel)")
         
-        // Dynamic Threshold based on Risk Level
+        // Dynamic Threshold based on Risk Level (Strict for better security)
         val threshold = when(riskLevel) {
-            "HIGH" -> 0.95f   // Stricter
-            "MEDIUM" -> 1.05f // Standard
-            else -> 1.15f     // Lenient
+            "HIGH" -> 0.70f   // Very strict
+            "MEDIUM" -> 0.80f // Standard
+            else -> 0.90f     // Lenient
         }
         
         return distance < threshold
@@ -492,22 +553,22 @@ class LockActivity : AppCompatActivity() {
         finish()
     }
 
-    private fun captureIntruderPhoto(bitmap: Bitmap? = null, rotationDegrees: Int = 0) {
-        Log.d("LockActivity", "captureIntruderPhoto called. Bitmap present: ${bitmap != null}")
+    private fun captureIntruderPhoto(bitmap: Bitmap? = null, rotationDegrees: Int = 0, reason: String = "unknown") {
+        Log.d("LockActivity", "captureIntruderPhoto called. Reason: $reason, Bitmap present: ${bitmap != null}")
         val timestamp = System.currentTimeMillis()
         
         if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
             fusedLocationClient.lastLocation.addOnSuccessListener { location ->
-                saveIntruderData(bitmap, rotationDegrees, timestamp, location?.latitude, location?.longitude)
+                saveIntruderData(bitmap, rotationDegrees, timestamp, location?.latitude, location?.longitude, reason)
             }.addOnFailureListener {
-                saveIntruderData(bitmap, rotationDegrees, timestamp, null, null)
+                saveIntruderData(bitmap, rotationDegrees, timestamp, null, null, reason)
             }
         } else {
-            saveIntruderData(bitmap, rotationDegrees, timestamp, null, null)
+            saveIntruderData(bitmap, rotationDegrees, timestamp, null, null, reason)
         }
     }
 
-    private fun saveIntruderData(bitmap: Bitmap?, rotationDegrees: Int, timestamp: Long, lat: Double?, lon: Double?) {
+    private fun saveIntruderData(bitmap: Bitmap?, rotationDegrees: Int, timestamp: Long, lat: Double?, lon: Double?, reason: String) {
         if (isVerifiedInThisSession) {
             Log.d("LockActivity", "Skipping intruder capture because owner was verified.")
             return
@@ -519,7 +580,12 @@ class LockActivity : AppCompatActivity() {
             return
         }
         val locSuffix = if (lat != null && lon != null) "_loc_${lat}_${lon}" else ""
-        val photoFile = File(dir, "intruder_${timestamp}${locSuffix}.jpg")
+        val photoFile = File(dir, "intruder_${timestamp}_reason_${reason}${locSuffix}.jpg")
+        
+        synchronized(sessionCaptureFiles) {
+            sessionCaptureFiles.add(photoFile)
+        }
+
         Log.d("LockActivity", "Saving intruder data to: ${photoFile.absolutePath}")
         
         if (bitmap != null) {
@@ -605,6 +671,9 @@ class LockActivity : AppCompatActivity() {
     }
 
     private fun unlockSuccess() {
+        if (isVerifiedInThisSession) {
+            cleanupSessionPhotos()
+        }
         riskEngine.resetFailedAttempts()
         val targetApp = intent.getStringExtra("TARGET_PACKAGE")
         if (targetApp != null) {
@@ -633,6 +702,9 @@ class LockActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        if (isVerifiedInThisSession) {
+            cleanupSessionPhotos()
+        }
         failSafeRunnable?.let { handler.removeCallbacks(it) }
         // Don't shut down immediately to allow pending saves to finish
         handler.postDelayed({ cameraExecutor.shutdown() }, 5000)

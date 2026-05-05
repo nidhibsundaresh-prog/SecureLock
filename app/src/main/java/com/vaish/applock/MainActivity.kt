@@ -391,6 +391,10 @@ class MainActivity : AppCompatActivity() {
             updateStatusUI()
         }
 
+        findViewById<MaterialCardView>(R.id.btnSelectApps).setOnClickListener {
+            startActivity(Intent(this, AppListActivity::class.java))
+        }
+
         findViewById<MaterialCardView>(R.id.btnRegisterOwner).setOnClickListener {
             registerOwner()
         }

@@ -96,7 +96,6 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -140,8 +139,6 @@
                         android:layout_height="wrap_content" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
-
-
 
             <!-- Analytics Section -->
             <TextView
@@ -456,13 +453,42 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
+                android:layout_marginBottom="12dp"
                 android:orientation="horizontal">
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/btnSelectApps"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="8dp"
+                    android:layout_weight="1"
+                    app:cardBackgroundColor="@color/accent_purple"
+                    app:cardCornerRadius="20dp"
+                    app:cardElevation="0dp">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+                        <ImageView
+                            android:layout_width="32dp"
+                            android:layout_height="32dp"
+                            android:src="@android:drawable/ic_menu_sort_by_size"
+                            app:tint="@color/violet_500" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="@string/lock_apps"
+                            android:textStyle="bold"
+                            android:textColor="@color/violet_500" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
                 <com.google.android.material.card.MaterialCardView
                     android:id="@+id/btnRegisterOwner"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginEnd="8dp"
+                    android:layout_marginStart="8dp"
                     android:layout_weight="1"
                     app:cardBackgroundColor="@color/accent_blue"
                     app:cardCornerRadius="20dp"
@@ -487,11 +513,18 @@
                             android:textColor="@color/primary" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                android:orientation="horizontal">
                 <com.google.android.material.card.MaterialCardView
                     android:id="@+id/btnViewLogs"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
+                    android:layout_marginEnd="8dp"
                     android:layout_weight="1"
                     app:cardBackgroundColor="@color/accent_red"
                     app:cardCornerRadius="20dp"
@@ -514,6 +547,35 @@
                             android:text="@string/intruder_logs"
                             android:textStyle="bold"
                             android:textColor="@color/error" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/btnTestIntruder"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    app:cardBackgroundColor="@color/accent_orange"
+                    app:cardCornerRadius="20dp"
+                    app:cardElevation="0dp">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+                        <ImageView
+                            android:layout_width="32dp"
+                            android:layout_height="32dp"
+                            android:src="@android:drawable/ic_menu_camera"
+                            app:tint="@color/amber_500" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="@string/test_intruder"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_primary" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
             </LinearLayout>
@@ -544,35 +606,6 @@
                         android:layout_height="wrap_content"
                         android:layout_marginStart="16dp"
                         android:text="@string/set_security_pin"
-                        android:textStyle="bold"
-                        android:textColor="@color/text_primary" />
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/btnTestIntruder"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                app:cardBackgroundColor="@color/accent_orange"
-                app:cardCornerRadius="20dp"
-                app:cardElevation="0dp">
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:padding="16dp">
-                    <ImageView
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
-                        android:src="@android:drawable/ic_menu_camera"
-                        app:tint="@color/amber_500" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="16dp"
-                        android:text="@string/test_intruder"
                         android:textStyle="bold"
                         android:textColor="@color/text_primary" />
                 </LinearLayout>

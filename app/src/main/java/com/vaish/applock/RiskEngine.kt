@@ -20,24 +20,31 @@ class RiskEngine(private val context: Context) {
     fun calculateRisk(packageName: String): Int {
         var score = 0
 
-        // 1. Failed Attempts Factor (0-40 points)
+        // 1. Failed Attempts Factor (0-60 points)
         val failedAttempts = sharedPrefs.getInt("RecentFailedAttempts", 0)
-        score += (failedAttempts * 10).coerceAtMost(40)
+        score += (failedAttempts * 20).coerceAtMost(60)
         if (failedAttempts > 0) {
-            Log.d("RiskEngine", "Failed Attempts Factor: +${(failedAttempts * 10).coerceAtMost(40)}")
+            Log.d("RiskEngine", "Failed Attempts Factor: +${(failedAttempts * 20).coerceAtMost(60)}")
         }
 
-        // 3. App Sensitivity Factor (0-30 points)
+        // 2. Frequency Factor (0-40 points) - Opening apps too quickly
+        val lastOpenTime = sharedPrefs.getLong("LastAppOpenTime", 0L)
+        val timeDiff = System.currentTimeMillis() - lastOpenTime
+        if (lastOpenTime > 0 && timeDiff < 10000) { // Less than 10 seconds since last app open
+            score += 40
+            Log.d("RiskEngine", "Frequency Factor: +40 (Rapid app switching detected: ${timeDiff}ms)")
+        }
+
+        // 3. App Sensitivity Factor (0-20 points)
         if (isSensitiveApp(packageName)) {
-            score += 30
-            Log.d("RiskEngine", "Sensitivity Factor: +30 (Financial/Social App)")
+            score += 20
+            Log.d("RiskEngine", "Sensitivity Factor: +20 (Financial/Social App)")
         }
 
-        // 4. Location Factor (Mocked for now - 0-20 points)
-        // In a real app, check current WiFi SSID or GPS against "Safe Zones"
+        // 4. Location Factor (0-10 points)
         if (!isSafeLocation()) {
-            score += 20
-            Log.d("RiskEngine", "Location Factor: +20 (Unknown location)")
+            score += 10
+            Log.d("RiskEngine", "Location Factor: +10 (Unknown location)")
         }
 
         Log.d("RiskEngine", "Total Risk Score for $packageName: $score")
