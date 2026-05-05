@@ -241,7 +241,7 @@ class MainActivity : AppCompatActivity() {
         
         val usageLogs = logStrings.mapNotNull { log ->
             val parts = log.split(" | ")
-            if (parts.size == 3) {
+            if (parts.size >= 3) {
                 UsageLogEntry(parts[0], parts[1].toLong(), parts[2].toLong())
             } else null
         }
@@ -412,15 +412,6 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Simulating intruder... Keep camera active", Toast.LENGTH_SHORT).show()
         }
 
-        findViewById<MaterialCardView>(R.id.btnTestIntruder).setOnClickListener {
-            val intent = Intent(this, LockActivity::class.java)
-            intent.putExtra("MODE", "STEALTH")
-            intent.putExtra("TEST_MODE", true)
-            startActivity(intent)
-            Toast.makeText(this, "Simulating intruder... Keep camera active", Toast.LENGTH_SHORT).show()
-        }
-
-
 
         findViewById<MaterialCardView>(R.id.btnTestStealth).setOnClickListener {
             if (!Settings.canDrawOverlays(this)) {
@@ -435,16 +426,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-
-        // Behavioral Lock Toggle
-        val switchBehavior = findViewById<MaterialSwitch>(R.id.switchBehavior)
-        switchBehavior.isChecked = sharedPrefs.getBoolean("BehaviorLock", false)
-        switchBehavior.setOnCheckedChangeListener { _, isChecked ->
-            sharedPrefs.edit().putBoolean("BehaviorLock", isChecked).apply()
-            if (isChecked) {
-                Toast.makeText(this, "Behavioral Lock Enabled", Toast.LENGTH_SHORT).show()
-            }
-        }
 
         // Dark Mode Toggle
         val switchDarkMode = findViewById<MaterialSwitch>(R.id.switchDarkMode)
@@ -466,7 +447,7 @@ class MainActivity : AppCompatActivity() {
         btnRegisterWifi = findViewById(R.id.btnRegisterWifi)
         tvSafeWifisTitle = findViewById(R.id.tvSafeWifisTitle)
         cgSafeWifis = findViewById(R.id.cgSafeWifis)
-
+        
         cardOwner = findViewById(R.id.cardOwner)
         ivOwnerFace = findViewById(R.id.ivOwnerFace)
         tvOwnerTitle = findViewById(R.id.tvOwnerTitle)

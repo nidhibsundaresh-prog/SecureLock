@@ -97,51 +97,6 @@
             </com.google.android.material.card.MaterialCardView>
 
 
-            <!-- Settings Toggles -->
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                app:cardBackgroundColor="@color/accent_purple"
-                app:cardCornerRadius="20dp"
-                app:cardElevation="0dp">
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:padding="16dp">
-                    <ImageView
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
-                        android:src="@android:drawable/ic_menu_myplaces"
-                        app:tint="@color/violet_500" />
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="16dp"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/behavioral_lock"
-                            android:textStyle="bold"
-                            android:textColor="@color/text_primary" />
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/behavioral_lock_desc"
-                            android:textSize="12sp"
-                            android:textColor="@color/text_secondary" />
-                    </LinearLayout>
-                    <com.google.android.material.materialswitch.MaterialSwitch
-                        android:id="@+id/switchBehavior"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content" />
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

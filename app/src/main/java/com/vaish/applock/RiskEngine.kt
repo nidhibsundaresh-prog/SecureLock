@@ -9,7 +9,6 @@ import java.util.*
 
 class RiskEngine(private val context: Context) {
     private val sharedPrefs = context.getSharedPreferences("AppLockPrefs", Context.MODE_PRIVATE)
-    private val behaviorModel = BehaviorModel(context)
 
     enum class RiskLevel {
         LOW, MEDIUM, HIGH
@@ -21,13 +20,7 @@ class RiskEngine(private val context: Context) {
     fun calculateRisk(packageName: String): Int {
         var score = 0
 
-        // 1. Time Factor (0-30 points)
-        if (behaviorModel.isAnomaly(packageName)) {
-            score += 30
-            Log.d("RiskEngine", "Time Factor: +30 (Unusual usage time)")
-        }
-
-        // 2. Failed Attempts Factor (0-40 points)
+        // 1. Failed Attempts Factor (0-40 points)
         val failedAttempts = sharedPrefs.getInt("RecentFailedAttempts", 0)
         score += (failedAttempts * 10).coerceAtMost(40)
         if (failedAttempts > 0) {

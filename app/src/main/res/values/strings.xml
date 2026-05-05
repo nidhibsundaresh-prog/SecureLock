@@ -69,4 +69,8 @@
     <string name="registered_owner">Registered Owner</string>
     <string name="system_owner">System Owner</string>
     <string name="face_id_active">Face ID Active</string>
+    <string name="behavior_calibration">Behavior Calibration</string>
+    <string name="behavior_calibration_desc">Swipe here 10 times to build your profile</string>
+    <string name="calibration_complete">Calibration Complete!</string>
+    <string name="calibration_progress">Calibration: %1$d/10</string>
 </resources>

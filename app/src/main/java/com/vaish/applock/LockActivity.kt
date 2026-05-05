@@ -45,6 +45,7 @@ class LockActivity : AppCompatActivity() {
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private var failSafeRunnable: Runnable? = null
+    private var lastSavedIntruderFile: File? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         mode = intent.getStringExtra("MODE") ?: "VERIFY"
@@ -125,6 +126,10 @@ class LockActivity : AppCompatActivity() {
         failSafeRunnable?.let { handler.removeCallbacks(it) }
         
         isProcessing = false
+        intruderCapturedInSession = false
+        isVerifiedInThisSession = false
+        lastSavedIntruderFile = null
+
         isOwnerRegistered = File(getExternalFilesDir(null), "owner_face.dat").exists()
         
         Log.d("LockActivity", "New intent received. Mode: $mode. Resetting state.")
@@ -291,22 +296,23 @@ class LockActivity : AppCompatActivity() {
                     // Start stealth monitoring
                     cameraProvider.bindToLifecycle(this, cameraSelector, imageCapture, imageAnalyzer)
                     
-                    // FAIL-SAFE: If no owner verified within 4 seconds, capture whatever is there
+                    // FAIL-SAFE: If no owner verified within 3 seconds, capture whatever is there
                     failSafeRunnable = Runnable {
                         if (!isProcessing && !isFinishing) {
                             Log.d("LockActivity", "Stealth timeout: Capturing evidence anyway.")
-                            isProcessing = true
                             
                             // Capture the last frame we had
                             captureIntruderPhoto(lastDetectedBitmap, 0)
                             
                             handler.postDelayed({
-                                finish()
-                                overridePendingTransition(0, 0)
+                                if (!isFinishing) {
+                                    finish()
+                                    overridePendingTransition(0, 0)
+                                }
                             }, 1000)
                         }
                     }
-                    handler.postDelayed(failSafeRunnable!!, 4000)
+                    handler.postDelayed(failSafeRunnable!!, 3000)
                 } else {
                     cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageCapture, imageAnalyzer)
                 }
@@ -320,10 +326,14 @@ class LockActivity : AppCompatActivity() {
 
     private var lastDetectedFace: Face? = null
     private var lastDetectedBitmap: Bitmap? = null
+    private var lastDetectedRotation: Int = 0
+    private var intruderCapturedInSession = false
+    private var isVerifiedInThisSession = false
 
     private fun onFaceDetected(face: Face?, bitmap: Bitmap?, rotation: Int) {
         if (bitmap != null) {
             lastDetectedBitmap = bitmap
+            lastDetectedRotation = rotation
         }
         if (face != null) {
             lastDetectedFace = face
@@ -338,7 +348,20 @@ class LockActivity : AppCompatActivity() {
                 val isVerified = verifyFace(face, bitmap)
                 Log.d("LockActivity", "Face detected. Verified: $isVerified")
                 
+                val sharedPrefs = getSharedPreferences("AppLockPrefs", Context.MODE_PRIVATE)
+
                 if (isVerified) {
+                    isVerifiedInThisSession = true
+                    sharedPrefs.edit().putBoolean("IsIntruderSession", false).apply()
+                    
+                    // Match found! Delete any preliminary intruder photo from this session
+                    lastSavedIntruderFile?.let {
+                        if (it.exists()) {
+                            it.delete()
+                            Log.d("LockActivity", "Match found! Deleted preliminary intruder photo.")
+                        }
+                    }
+                    
                     isProcessing = true
                     failSafeRunnable?.let { handler.removeCallbacks(it) }
                     
@@ -360,25 +383,23 @@ class LockActivity : AppCompatActivity() {
                         overridePendingTransition(0, 0)
                     }
                 } else {
-                    Log.d("LockActivity", "Intruder detected. Capture triggered.")
-                    isProcessing = true
-                    failSafeRunnable?.let { handler.removeCallbacks(it) }
-                    captureIntruderPhoto(bitmap, rotation)
+                    Log.d("LockActivity", "Intruder detected. Face doesn't match.")
                     
-                    if (mode == "STEALTH" || mode == "APP_UNLOCK") {
-                        handler.postDelayed({
-                            if (!isFinishing) {
-                                if (mode == "STEALTH") {
-                                    finish()
-                                    overridePendingTransition(0, 0)
-                                } else {
-                                    isProcessing = false
-                                }
-                            }
-                        }, 1500)
-                    } else {
-                        handler.postDelayed({ isProcessing = false }, 2000)
+                    if (!intruderCapturedInSession) {
+                        Log.d("LockActivity", "Capturing intruder photo.")
+                        sharedPrefs.edit().putBoolean("IsIntruderSession", true).apply()
+                        captureIntruderPhoto(bitmap, rotation)
+                        intruderCapturedInSession = true
+                        
+                        // In VERIFY mode, we stop after one attempt or show error
+                        if (mode != "STEALTH") {
+                            isProcessing = true
+                            handler.postDelayed({ isProcessing = false }, 2000)
+                        }
                     }
+                    
+                    // In stealth mode, we don't set isProcessing = true yet, 
+                    // giving the owner more chances to be recognized in subsequent frames.
                 }
             } else if (mode == "STEALTH") {
                 // In stealth mode, if we haven't seen a face yet but have frames,
@@ -417,9 +438,9 @@ class LockActivity : AppCompatActivity() {
         
         // Dynamic Threshold based on Risk Level
         val threshold = when(riskLevel) {
-            "HIGH" -> 0.75f   // Very strict
-            "MEDIUM" -> 0.80f // Standard
-            else -> 0.85f     // More realistic for front camera
+            "HIGH" -> 0.95f   // Stricter
+            "MEDIUM" -> 1.05f // Standard
+            else -> 1.15f     // Lenient
         }
         
         return distance < threshold
@@ -487,6 +508,11 @@ class LockActivity : AppCompatActivity() {
     }
 
     private fun saveIntruderData(bitmap: Bitmap?, rotationDegrees: Int, timestamp: Long, lat: Double?, lon: Double?) {
+        if (isVerifiedInThisSession) {
+            Log.d("LockActivity", "Skipping intruder capture because owner was verified.")
+            return
+        }
+
         val dir = getExternalFilesDir(null)
         if (dir == null) {
             Log.e("LockActivity", "External files dir is null!")
@@ -499,6 +525,10 @@ class LockActivity : AppCompatActivity() {
         if (bitmap != null) {
             // Use background executor for image processing and saving
             cameraExecutor.execute {
+                if (isVerifiedInThisSession) {
+                    Log.d("LockActivity", "Owner verified while preparing photo. Aborting save.")
+                    return@execute
+                }
                 try {
                     val matrix = android.graphics.Matrix()
                     matrix.postRotate(rotationDegrees.toFloat())
@@ -510,7 +540,15 @@ class LockActivity : AppCompatActivity() {
                     java.io.FileOutputStream(photoFile).use { out ->
                         rotatedBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
                     }
+                    
+                    if (isVerifiedInThisSession) {
+                        Log.d("LockActivity", "Owner verified just as photo was saved. Deleting.")
+                        photoFile.delete()
+                        return@execute
+                    }
+
                     Log.d("LockActivity", "Intruder photo saved: ${photoFile.absolutePath}")
+                    lastSavedIntruderFile = photoFile
                     
                     if (intent.getBooleanExtra("TEST_MODE", false)) {
                         runOnUiThread {
@@ -526,7 +564,13 @@ class LockActivity : AppCompatActivity() {
             val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
             imageCapture?.takePicture(outputOptions, cameraExecutor, object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                    if (isVerifiedInThisSession) {
+                        Log.d("LockActivity", "Owner verified after ImageCapture. Deleting photo.")
+                        photoFile.delete()
+                        return
+                    }
                     Log.d("LockActivity", "Intruder photo saved via ImageCapture: ${photoFile.absolutePath}")
+                    lastSavedIntruderFile = photoFile
                     if (intent.getBooleanExtra("TEST_MODE", false)) {
                         runOnUiThread {
                             Toast.makeText(this@LockActivity, "Test Photo Captured!", Toast.LENGTH_SHORT).show()

@@ -23,7 +23,6 @@ class AppLockService : Service() {
     private var lastProtectedTick: Long = 0
     private val TRIGGER_COOLDOWN = 10000L // 10 seconds cooldown between stealth checks
     private var screenUnlockReceiver: BroadcastReceiver? = null
-    private lateinit var behaviorModel: BehaviorModel
     private lateinit var riskEngine: RiskEngine
 
 
@@ -38,7 +37,6 @@ class AppLockService : Service() {
         updateLockedPackages()
         createNotificationChannel()
         registerScreenUnlockReceiver()
-        behaviorModel = BehaviorModel(this)
         riskEngine = RiskEngine(this)
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -201,6 +199,9 @@ class AppLockService : Service() {
     }
 
     private fun triggerStealthPhoto() {
+        getSharedPreferences("AppLockPrefs", Context.MODE_PRIVATE).edit()
+            .putBoolean("IsIntruderSession", false).apply()
+            
         val intent = Intent(this, LockActivity::class.java)
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         intent.putExtra("MODE", "STEALTH")
@@ -211,15 +212,12 @@ class AppLockService : Service() {
         if (currentTrackingPackage != null && currentTrackingPackage != packageName) {
             val duration = (System.currentTimeMillis() - trackingStartTime) / 1000 // in seconds
             if (duration > 0) { // Log all durations
-                val logEntry = "$currentTrackingPackage | ${System.currentTimeMillis()} | $duration"
                 val sharedPrefs = getSharedPreferences("AppLockPrefs", Context.MODE_PRIVATE)
                 
                 // Only learn if the owner was verified in this session
                 val isIntruder = sharedPrefs.getBoolean("IsIntruderSession", false)
-                if (!isIntruder) {
-                    behaviorModel.learn(currentTrackingPackage!!, duration)
-                }
 
+                val logEntry = "$currentTrackingPackage | ${System.currentTimeMillis()} | $duration | ${if (isIntruder) "INTRUDER" else "OWNER"}"
                 val existingLogs = sharedPrefs.getStringSet("IntruderUsageLogs", mutableSetOf()) ?: mutableSetOf()
                 val newLogs = HashSet(existingLogs)
                 newLogs.add(logEntry)
@@ -259,6 +257,9 @@ class AppLockService : Service() {
     }
 
     private fun showLockScreen(targetPackage: String, riskLevel: RiskEngine.RiskLevel = RiskEngine.RiskLevel.LOW) {
+        getSharedPreferences("AppLockPrefs", Context.MODE_PRIVATE).edit()
+            .putBoolean("IsIntruderSession", false).apply()
+
         val intent = Intent(this, LockActivity::class.java)
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         intent.putExtra("TARGET_PACKAGE", targetPackage)
